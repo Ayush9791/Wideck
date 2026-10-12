@@ -2,12 +2,79 @@ name: Build and release WiDeck
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
-  paused:
+  android:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Release automation is being updated for v1.0.1."
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleDebug
+      - name: Name APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "WiDeck-Android-v1.0.1.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WiDeck-Android-APK
+          path: WiDeck-Android-v1.0.1.apk
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r windows/requirements.txt
+      - name: Build EXE
+        working-directory: windows
+        run: python -m PyInstaller --noconfirm --onefile --windowed --name WiDeck app.py
+      - name: Name EXE
+        shell: pwsh
+        run: Copy-Item windows/dist/WiDeck.exe "WiDeck-Windows-v1.0.1.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WiDeck-Windows-EXE
+          path: WiDeck-Windows-v1.0.1.exe
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: WiDeck-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish v1.0.1 release with the fix tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v1.0.1" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v1.0.1 already exists; keeping the existing release immutable."
+            exit 0
+          fi
+          gh release create "v1.0.1" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "WiDeck v1.0.1 (Fix)" \
+            --notes "Fix release: added live app search on Android and expanded Windows app discovery to registered Start apps, including supported Microsoft Store apps such as Spotify."
