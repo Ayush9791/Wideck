@@ -1,0 +1,77 @@
+name: Build and release WiDeck
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleDebug
+      - name: Name APK
+        env:
+          VERSION_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "WiDeck-Android-${VERSION_TAG}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WiDeck-Android-APK
+          path: WiDeck-Android-*.apk
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -r windows/requirements.txt
+      - name: Build EXE
+        working-directory: windows
+        run: python -m PyInstaller --noconfirm --onefile --windowed --name WiDeck app.py
+      - name: Name EXE
+        shell: pwsh
+        env:
+          VERSION_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.0' }}
+        run: Copy-Item windows/dist/WiDeck.exe "WiDeck-Windows-$env:VERSION_TAG.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WiDeck-Windows-EXE
+          path: WiDeck-Windows-*.exe
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: WiDeck-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish v1.0.0 release and create tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.0.0" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "WiDeck v1.0.0" \
+            --generate-notes
