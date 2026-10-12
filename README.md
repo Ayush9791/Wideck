@@ -1,21 +1,26 @@
 # WiDeck
 
-WiDeck is a personal Stream Deck-style remote for launching Windows applications and controlling media volume from an Android phone over a shared Wi-Fi network.
+WiDeck is a personal Stream Deck-style remote for controlling a Windows laptop from an Android phone over the same Wi-Fi network.
 
 ## User flow
-1. Start the Windows host and keep it running. It shows the laptop's local IP address and a pairing PIN.
+1. Start the Windows host and keep it running. It displays the laptop's local IP address and a pairing PIN.
 2. Open WiDeck on Android, enter the IP and PIN, and connect.
-3. After pairing, choose up to five Windows applications from discovered Start Menu/Desktop shortcuts.
-4. The phone opens a landscape 3-column × 2-row deck. Five slots are for selected apps and the sixth is Settings.
-5. Settings provides volume controls, app selection, and connection controls.
+3. After pairing, search the discovered Windows apps and select up to five.
+4. The phone deck stays in landscape with a 3-column × 2-row grid: five app keys and a dedicated Settings key.
+5. Settings includes volume up/down, mute, change selected apps, and disconnect/reconnect.
+
+## App discovery
+The Windows host scans Start Menu and Desktop shortcuts and queries `Get-StartApps` for apps registered with Windows, including supported Microsoft Store apps such as Spotify. The Android picker supports live search so users can find an app in a long list. Store apps are launched through their registered AppsFolder ID.
+
+Some portable apps and apps without a Windows Start registration or shortcut may still need a shortcut added manually.
 
 ## Project layout
 - `windows/`: Python desktop host and local HTTP API.
 - `android/`: Native Android Java app.
-- `.github/workflows/build.yml`: GitHub Actions build and tag-based release workflow.
+- `.github/workflows/build.yml`: CI builds for the APK and EXE and the `v1.0.1` release.
 
-## Release builds
-Pushing a version tag such as `v1.0.0` runs Android APK and Windows EXE builds. If both builds succeed, GitHub Actions creates a GitHub Release and attaches versioned `.apk` and `.exe` files.
+## Build/release
+Pushing to `main` builds the Android APK and Windows EXE in GitHub Actions. After both builds succeed, the workflow publishes the `v1.0.1` GitHub Release with versioned APK/EXE assets and creates the matching Git tag.
 
 ## Security
 Designed for a trusted home LAN only. Do not port-forward the host port to the internet. The pairing PIN/token do not encrypt network traffic.
