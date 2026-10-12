@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+android/.gradle/
+android/local.properties
+android/**/build/
+windows/build/
+windows/dist/
+*.spec
