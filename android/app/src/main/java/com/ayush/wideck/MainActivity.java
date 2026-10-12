@@ -6,6 +6,9 @@ import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.View;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -22,6 +25,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -181,6 +185,17 @@ public class MainActivity extends Activity {
         list.setOrientation(LinearLayout.VERTICAL);
         ArrayList<CheckBox> checks = new ArrayList<>();
         JSONArray saved = savedApps();
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setHint("Search installed apps (e.g. Spotify)");
+        search.setTextColor(TEXT);
+        search.setHintTextColor(MUTED);
+        search.setTextSize(14);
+        search.setPadding(dp(12), 0, dp(12), 0);
+        search.setBackgroundTintList(android.content.res.ColorStateList.valueOf(MUTED));
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(44));
+        searchParams.bottomMargin = dp(6);
+        root.addView(search, searchParams);
         for (int i = 0; i < availableApps.length(); i++) {
             JSONObject app = availableApps.optJSONObject(i);
             if (app == null) continue;
@@ -196,6 +211,17 @@ public class MainActivity extends Activity {
             checks.add(cb);
             list.addView(cb, new LinearLayout.LayoutParams(-1, dp(34)));
         }
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String query = s.toString().trim().toLowerCase(Locale.ROOT);
+                for (CheckBox check : checks) {
+                    boolean matches = check.getText().toString().toLowerCase(Locale.ROOT).contains(query);
+                    check.setVisibility(matches ? View.VISIBLE : View.GONE);
+                }
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         scroll.addView(list);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
