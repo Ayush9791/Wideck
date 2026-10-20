@@ -2,6 +2,14 @@ package com.ayush.wideck;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
+import android.graphics.drawable.GradientDrawable;
+import androidx.core.content.FileProvider;
+import java.io.File;
+import java.io.FileOutputStream;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -38,6 +46,8 @@ public class MainActivity extends Activity {
     private final ArrayList<JSONObject> chosenApps = new ArrayList<>();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
+    private String latestVersion = "", latestApkUrl = "", latestReleaseNotes = "";
+    private String currentPage = "connect";
 
     private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
 
@@ -47,19 +57,20 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("wideck", MODE_PRIVATE);
         host = prefs.getString("host", "");
         showConnect();
+        checkForUpdates();
     }
 
     private LinearLayout page(String title, String subtitle) {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(12), dp(20), dp(12));
+        root.setPadding(dp(24), dp(18), dp(24), dp(18));
         root.setBackgroundColor(BG);
         TextView h = new TextView(this);
-        h.setText(title); h.setTextColor(TEXT); h.setTextSize(25);
+        h.setText(title); h.setTextColor(TEXT); h.setTextSize(28);
         h.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         root.addView(h);
         TextView sub = new TextView(this);
-        sub.setText(subtitle); sub.setTextColor(MUTED); sub.setTextSize(12);
+        sub.setText(subtitle); sub.setTextColor(MUTED); sub.setTextSize(13);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
         p.bottomMargin = dp(10);
         root.addView(sub, p);
@@ -70,7 +81,11 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(text); b.setAllCaps(false); b.setTextColor(TEXT); b.setTextSize(14);
         b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(PANEL));
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(PANEL);
+        shape.setCornerRadius(dp(12));
+        b.setBackground(shape);
+        b.setElevation(dp(2));
         return b;
     }
 
@@ -83,7 +98,9 @@ public class MainActivity extends Activity {
     }
 
     private void showConnect() {
-        LinearLayout root = page("WiDeck", "Connect to your Windows host first. Both devices must be on the same Wi-Fi.");
+        currentPage = "connect";
+        LinearLayout root = page("WiDeck", "Your phone, your laptop, one connected control deck.");
+        addUpdateBanner(root);
         LinearLayout fields = new LinearLayout(this);
         fields.setOrientation(LinearLayout.HORIZONTAL);
         hostInput = new EditText(this);
@@ -111,6 +128,151 @@ public class MainActivity extends Activity {
         status.setTextColor(MUTED); status.setTextSize(12); status.setPadding(0, dp(8), 0, 0);
         root.addView(status);
         setContentView(root);
+    }
+
+    private void addUpdateBanner(LinearLayout root) {
+        if (latestApkUrl.isEmpty()) return;
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(14), dp(10), dp(10), dp(10));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.rgb(24, 57, 51));
+        bg.setCornerRadius(dp(14));
+        card.setBackground(bg);
+        TextView message = new TextView(this);
+        message.setText("WiDeck " + latestVersion + " is ready");
+        message.setTextColor(ACCENT);
+        message.setTextSize(13);
+        message.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        card.addView(message, new LinearLayout.LayoutParams(0, -2, 1));
+        Button update = button("Update");
+        update.setTextSize(12);
+        card.addView(update, new LinearLayout.LayoutParams(dp(96), dp(40)));
+        update.setOnClickListener(v -> downloadAndInstallUpdate());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(12);
+        root.addView(card, 1, params);
+    }
+
+    private void checkForUpdates() {
+        worker.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL("https://api.github.com/repos/Ayush9791/Wideck/releases/latest").openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.setRequestProperty("Accept", "application/vnd.github+json");
+                connection.setRequestProperty("User-Agent", "WiDeck-Android");
+                int code = connection.getResponseCode();
+                if (code < 200 || code >= 300) return;
+                InputStream stream = connection.getInputStream();
+                java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[4096];
+                int count;
+                while ((count = stream.read(chunk)) != -1) buffer.write(chunk, 0, count);
+                JSONObject release = new JSONObject(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+                String tag = release.optString("tag_name", "").replaceFirst("^[vV]", "");
+                String current = BuildConfig.VERSION_NAME;
+                if (tag.isEmpty() || compareVersions(tag, current) <= 0) return;
+                JSONArray assets = release.optJSONArray("assets");
+                if (assets == null) return;
+                String apkUrl = "";
+                for (int i = 0; i < assets.length(); i++) {
+                    JSONObject asset = assets.optJSONObject(i);
+                    if (asset == null) continue;
+                    String name = asset.optString("name", "");
+                    if (name.startsWith("WiDeck-Android-") && name.endsWith(".apk")) {
+                        apkUrl = asset.optString("browser_download_url", "");
+                        if (!apkUrl.isEmpty()) break;
+                    }
+                }
+                if (apkUrl.isEmpty()) return;
+                String notes = release.optString("body", "");
+                final String foundVersion = tag;
+                final String foundUrl = apkUrl;
+                final String foundNotes = notes;
+                runOnUiThread(() -> {
+                    latestVersion = foundVersion;
+                    latestApkUrl = foundUrl;
+                    latestReleaseNotes = foundNotes;
+                    if ("connect".equals(currentPage)) showConnect();
+                    else if ("deck".equals(currentPage)) showDeck();
+                    else Toast.makeText(this, "WiDeck " + latestVersion + " is available. Open Settings to update.", Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception ignored) {
+                // Update checks are best-effort and must not block normal app use.
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private int compareVersions(String first, String second) {
+        try {
+            String[] a = first.split("\\.");
+            String[] b = second.split("\\.");
+            for (int i = 0; i < Math.max(a.length, b.length); i++) {
+                int av = i < a.length ? Integer.parseInt(a[i].replaceAll("[^0-9].*$", "")) : 0;
+                int bv = i < b.length ? Integer.parseInt(b[i].replaceAll("[^0-9].*$", "")) : 0;
+                if (av != bv) return Integer.compare(av, bv);
+            }
+        } catch (Exception ignored) { }
+        return first.compareTo(second);
+    }
+
+    private void downloadAndInstallUpdate() {
+        if (latestApkUrl.isEmpty()) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !getPackageManager().canRequestPackageInstalls()) {
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("Allow app updates")
+                .setMessage("Android needs permission to install updates downloaded by WiDeck. Enable “Allow from this source”, then return and tap Update again.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Open settings", (dialog, which) -> {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                }).show();
+            return;
+        }
+        Toast.makeText(this, "Downloading WiDeck " + latestVersion + "…", Toast.LENGTH_SHORT).show();
+        final String downloadUrl = latestApkUrl;
+        worker.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(downloadUrl).openConnection();
+                connection.setConnectTimeout(10000);
+                connection.setReadTimeout(20000);
+                connection.setRequestProperty("User-Agent", "WiDeck-Android");
+                int code = connection.getResponseCode();
+                if (code < 200 || code >= 300) throw new Exception("Download failed (" + code + ")");
+                File directory = new File(getCacheDir(), "updates");
+                if (!directory.exists() && !directory.mkdirs()) throw new Exception("Cannot create update directory");
+                File apk = new File(directory, "WiDeck-update.apk");
+                try (InputStream in = connection.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
+                    byte[] bytes = new byte[8192];
+                    int length;
+                    while ((length = in.read(bytes)) != -1) out.write(bytes, 0, length);
+                }
+                if (apk.length() < 1024) throw new Exception("Downloaded APK is too small");
+                runOnUiThread(() -> {
+                    try {
+                        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", apk);
+                        Intent install = new Intent(Intent.ACTION_VIEW);
+                        install.setDataAndType(uri, "application/vnd.android.package-archive");
+                        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(install);
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Could not open Android installer. Download the APK from GitHub Releases.", Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Update download failed. Check your connection and retry.", Toast.LENGTH_LONG).show());
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
     }
 
     private String baseUrl() {
@@ -180,7 +342,9 @@ public class MainActivity extends Activity {
     }
 
     private void showAppPicker() {
-        LinearLayout root = page("Choose your deck", "Select up to five Windows apps. The sixth key is reserved for Settings.");
+        currentPage = "picker";
+        LinearLayout root = page("Build your deck", "Choose up to five apps. Your sixth key opens Settings.");
+        addUpdateBanner(root);
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         ArrayList<CheckBox> checks = new ArrayList<>();
@@ -267,7 +431,9 @@ public class MainActivity extends Activity {
     }
 
     private void showDeck() {
-        LinearLayout root = page("WiDeck", "Connected to " + host + " · Tap an app to launch it");
+        currentPage = "deck";
+        LinearLayout root = page("WiDeck", "Connected to " + host + " · Tap a tile to launch");
+        addUpdateBanner(root);
         android.widget.GridLayout grid = new android.widget.GridLayout(this);
         grid.setColumnCount(3); grid.setRowCount(2);
         for (int i = 0; i < 6; i++) {
@@ -304,7 +470,9 @@ public class MainActivity extends Activity {
     }
 
     private void showSettings() {
-        LinearLayout root = page("Settings", "Deck controls and connection settings");
+        currentPage = "settings";
+        LinearLayout root = page("Settings", "Manage your deck and connection.");
+        addUpdateBanner(root);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         Button up = button("Volume +"), down = button("Volume −"), mute = button("Mute");
