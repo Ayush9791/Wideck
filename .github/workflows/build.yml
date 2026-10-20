@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   release:
     types: [published]
 
@@ -11,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  WIDECK_VERSION: ${{ github.event.release.tag_name || 'v1.0.3' }}
+  WIDECK_VERSION: ${{ github.event.release.tag_name || 'v1.1.0' }}
 
 jobs:
   android:
@@ -83,7 +85,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'push' || github.event_name == 'release'
+    if: github.event_name == 'release'
     needs: [android, windows]
     runs-on: ubuntu-latest
     steps:
