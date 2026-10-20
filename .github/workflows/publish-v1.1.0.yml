@@ -1,0 +1,28 @@
+name: Publish WiDeck v1.1.0
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    if: contains(github.event.head_commit.message, 'chore: trigger WiDeck v1.1.0 release')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create and publish v1.1.0 release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view v1.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "WiDeck v1.1.0 already exists; no changes made."
+            exit 0
+          fi
+          gh release create v1.1.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target main \
+            --title "WiDeck v1.1.0" \
+            --notes "Adds customizable app tiles and macro buttons for launching multiple Windows apps and opening websites. Android release signing must be configured with ANDROID_KEYSTORE_* repository secrets for stable signed updates. Without those secrets, the workflow produces a debug APK."
