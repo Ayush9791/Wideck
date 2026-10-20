@@ -75,7 +75,7 @@ jobs:
         run: python -m PyInstaller --noconfirm --onedir --windowed --name WiDeck app.py
       - name: Package Windows build
         shell: pwsh
-        run: Compress-Archive -Path windows/dist/WiDeck -DestinationPath "WiDeck-Windows-$env:WIDECK_VERSION.zip"
+        run: Compress-Archive -Path windows/dist/WiDeck -DestinationPath "WiDeck-Windows-${env:WIDECK_VERSION}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: WiDeck-Windows-ZIP
