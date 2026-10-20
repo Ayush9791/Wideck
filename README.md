@@ -6,6 +6,8 @@ WiDeck turns an Android phone into a personal Stream Deck-style remote for a Win
 
 - Pair your Android phone with the Windows host using the host IP and a one-time PIN.
 - Search installed Windows apps and choose up to five app shortcuts for a landscape 3×2 deck.
+- Customize app tile labels, colours, and order by long-pressing a tile.
+- Create macro buttons that launch multiple selected apps and optionally open a website in one tap; rename, recolour, reorder, or delete macros.
 - Launch selected apps from the phone.
 - Control media playback, volume, and mute from Settings.
 - Keep your chosen deck and host address saved between sessions.
@@ -58,8 +60,8 @@ Store that output as `ANDROID_KEYSTORE_BASE64`, then set the other three secrets
 
 ## Build and release
 
-- Pushing to `main` builds Windows and Android assets and creates the configured next release if it does not already exist.
-- Publishing a GitHub Release also triggers a build and attaches versioned Windows and Android assets to that release.
+- Pushing to `main` or opening a pull request builds Windows and Android artifacts for verification. Builds do not overwrite or create a release.
+- Publishing a GitHub Release triggers a build and attaches versioned Windows and Android assets to that release.
 - Release tags should use semantic versions such as `v1.0.3` or `v1.1.0`.
 - Android's version code is derived from the numeric version (major × 10,000 + minor × 100 + patch).
 
