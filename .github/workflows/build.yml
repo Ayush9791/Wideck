@@ -4,13 +4,23 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  release:
+    types: [published]
 
 permissions:
   contents: write
 
+env:
+  WIDECK_VERSION: ${{ github.event.release.tag_name || 'v1.0.3' }}
+
 jobs:
   android:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -23,15 +33,32 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build APK
+      - name: Configure stable Android signing
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        shell: bash
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/wideck-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/wideck-release.jks" >> "$GITHUB_ENV"
+      - name: Build signed release APK
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        working-directory: android
+        run: gradle assembleRelease
+      - name: Build debug APK (until release signing is configured)
+        if: env.ANDROID_KEYSTORE_BASE64 == ''
         working-directory: android
         run: gradle assembleDebug
       - name: Name APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk "WiDeck-Android-v1.0.2.apk"
+        shell: bash
+        run: |
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk "WiDeck-Android-$WIDECK_VERSION.apk"
+          else
+            cp android/app/build/outputs/apk/debug/app-debug.apk "WiDeck-Android-$WIDECK_VERSION.apk"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: WiDeck-Android-APK
-          path: WiDeck-Android-v1.0.2.apk
+          path: WiDeck-Android-${{ env.WIDECK_VERSION }}.apk
           if-no-files-found: error
 
   windows:
@@ -48,15 +75,15 @@ jobs:
         run: python -m PyInstaller --noconfirm --onedir --windowed --name WiDeck app.py
       - name: Package Windows build
         shell: pwsh
-        run: Compress-Archive -Path windows/dist/WiDeck -DestinationPath WiDeck-Windows-v1.0.2.zip
+        run: Compress-Archive -Path windows/dist/WiDeck -DestinationPath "WiDeck-Windows-${env:WIDECK_VERSION}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: WiDeck-Windows-ZIP
-          path: WiDeck-Windows-v1.0.2.zip
+          path: WiDeck-Windows-${{ env.WIDECK_VERSION }}.zip
           if-no-files-found: error
 
-  release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  publish:
+    if: github.event_name == 'push' || github.event_name == 'release'
     needs: [android, windows]
     runs-on: ubuntu-latest
     steps:
@@ -65,16 +92,21 @@ jobs:
           pattern: WiDeck-*
           merge-multiple: true
           path: release-assets
-      - name: Publish v1.0.2 release
+      - name: Publish release assets
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          if gh release view "v1.0.2" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release v1.0.2 already exists; keeping the existing release immutable."
-            exit 0
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            if gh release view "$WIDECK_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "$WIDECK_VERSION" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+            else
+              gh release create "$WIDECK_VERSION" release-assets/* \
+                --repo "$GITHUB_REPOSITORY" \
+                --target "$GITHUB_SHA" \
+                --title "WiDeck $WIDECK_VERSION" \
+                --notes "Release assets for Windows and Android. Configure the ANDROID_KEYSTORE_* repository secrets for stable signed Android updates. Unsigned/untrusted builds may require manual installation and should only be downloaded from this official repository."
+            fi
           fi
-          gh release create "v1.0.2" release-assets/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "WiDeck v1.0.2 (Windows false-positive mitigation)" \
-            --notes "Windows packaging change: replaced PyInstaller one-file executable with a directory-based build distributed as ZIP. This can reduce heuristic false positives but does not guarantee antivirus or SmartScreen approval. The Windows build is unsigned; download only from this official repository and scan it with your antivirus before running."
