@@ -101,12 +101,12 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
           else
             if gh release view "$WIDECK_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "Release $WIDECK_VERSION already exists; assets were built but the release was not overwritten."
-              exit 0
+              gh release upload "$WIDECK_VERSION" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+            else
+              gh release create "$WIDECK_VERSION" release-assets/* \
+                --repo "$GITHUB_REPOSITORY" \
+                --target "$GITHUB_SHA" \
+                --title "WiDeck $WIDECK_VERSION" \
+                --notes "Release assets for Windows and Android. Configure the ANDROID_KEYSTORE_* repository secrets for stable signed Android updates. Unsigned/untrusted builds may require manual installation and should only be downloaded from this official repository."
             fi
-            gh release create "$WIDECK_VERSION" release-assets/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "WiDeck $WIDECK_VERSION" \
-              --notes "Release assets for Windows and Android. Configure the ANDROID_KEYSTORE_* repository secrets for stable signed Android updates. Unsigned/untrusted builds may require manual installation and should only be downloaded from this official repository."
           fi
