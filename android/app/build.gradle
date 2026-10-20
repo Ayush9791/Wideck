@@ -7,6 +7,12 @@ def computedVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + vers
 
 android {
     namespace 'com.ayush.wideck'
+
+    // AGP 8 disables BuildConfig generation unless explicitly enabled.
+    // The app and update worker use BuildConfig.VERSION_NAME for release checks.
+    buildFeatures {
+        buildConfig true
+    }
     compileSdk 35
     defaultConfig {
         applicationId 'com.ayush.wideck'
