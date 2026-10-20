@@ -1,34 +1,72 @@
 # WiDeck
 
-WiDeck is a personal Stream Deck-style remote for controlling a Windows laptop from an Android phone over the same Wi-Fi network.
+WiDeck turns an Android phone into a personal Stream Deck-style remote for a Windows laptop over the same Wi-Fi network.
 
-## User flow
-1. Start the Windows host and keep it running. It displays the laptop's local IP address and a pairing PIN.
-2. Open WiDeck on Android, enter the IP and PIN, and connect.
-3. After pairing, search the discovered Windows apps and select up to five.
-4. The phone deck stays in landscape with a 3-column × 2-row grid: five app keys and a dedicated Settings key.
-5. Settings includes volume up/down, mute, change selected apps, and disconnect/reconnect.
+## What it does
 
-## App discovery
-The Windows host scans Start Menu and Desktop shortcuts and queries `Get-StartApps` for apps registered with Windows, including supported Microsoft Store apps such as Spotify. The Android picker supports live search. Store apps are launched through their registered AppsFolder ID.
+- Pair your Android phone with the Windows host using the host IP and a one-time PIN.
+- Search installed Windows apps and choose up to five app shortcuts for a landscape 3×2 deck.
+- Launch selected apps from the phone.
+- Control media playback, volume, and mute from Settings.
+- Keep your chosen deck and host address saved between sessions.
+- Check GitHub Releases for newer Android versions and show an in-app update banner with an **Update** button. The app downloads the APK and opens Android's package installer; Android still requires the user to approve installation.
 
-Some portable apps and apps without a Windows Start registration or shortcut may need a shortcut added manually.
+## Install and pair
 
-## Downloading the Windows build
-Download `WiDeck-Windows-v1.0.2.zip` from the official [GitHub Releases](https://github.com/Ayush9791/Wideck/releases). Extract the entire ZIP to a folder, then run `WiDeck.exe` inside the extracted `WiDeck` folder. Keep the adjacent `_internal` folder and files together with the EXE.
+1. Download the Android APK and Windows ZIP from the [GitHub Releases page](https://github.com/Ayush9791/Wideck/releases).
+2. Extract the complete Windows ZIP and run `WiDeck.exe` from the extracted `WiDeck` folder. Keep the adjacent `_internal` directory and files together.
+3. Keep the Windows host open. It displays the laptop's local IP address and pairing PIN.
+4. Open WiDeck on Android, enter the IP and PIN, and connect.
+5. Choose up to five apps. Both devices must be connected to the same Wi-Fi network.
 
-### Antivirus and SmartScreen
-WiDeck is an unsigned personal utility that runs a local HTTP server and sends media/app-launch commands. Some browser reputation systems or antivirus heuristics may warn about unsigned Python-packaged executables. Version 1.0.2 switches from a PyInstaller one-file executable to a directory-based package, which can reduce some heuristic detections but cannot guarantee that all scanners will trust it. The Windows build is not code-signed, and no warning should be bypassed blindly. Download only from this repository, inspect the file, and submit suspected false positives to the vendor that flagged it.
+## Automatic Android updates
 
-To establish publisher reputation and materially improve SmartScreen trust, the Windows executable needs a verifiable code-signing certificate and a signed release process. Packaging changes alone cannot create that trust.
+When a newer published GitHub Release contains an asset named `WiDeck-Android-<version>.apk`, WiDeck checks it when the app opens and shows an update banner. Tapping **Update** downloads the APK and opens Android's installer. Android does not permit silent installs for an ordinary sideloaded app; the user must confirm the update.
 
-## Project layout
-- `windows/`: Python desktop host and local HTTP API.
-- `android/`: Native Android Java app.
-- `.github/workflows/build.yml`: CI builds for the APK and Windows ZIP.
+### One-time signing setup required for reliable updates
 
-## Build/release
-Pushing to `main` builds the Android APK and a directory-based Windows package. After both builds succeed, GitHub Actions publishes the `v1.0.2` GitHub Release.
+Android only installs an update over an existing app when the new APK is signed with the same signing certificate as the installed APK. The earlier debug builds were not configured with a persistent release key, so an update from those builds may require a one-time uninstall/reinstall. App data may be lost during that migration.
+
+For stable future updates, create a private Android release keystore and add these four GitHub Actions repository secrets under **Settings → Secrets and variables → Actions**:
+
+- `ANDROID_KEYSTORE_BASE64`: Base64-encoded keystore file.
+- `ANDROID_KEYSTORE_PASSWORD`: Keystore password.
+- `ANDROID_KEY_ALIAS`: Key alias.
+- `ANDROID_KEY_PASSWORD`: Key password.
+
+Keep a secure offline backup of the keystore. If it is lost or replaced, Android will reject updates signed with the new key. Never commit the keystore or its passwords to the repository. Once the secrets are configured, the workflow signs release APKs with the same key on future releases.
+
+To create the keystore locally with Java's `keytool`:
+
+```bash
+keytool -genkeypair -v -keystore wideck-release.jks -alias wideck -keyalg RSA -keysize 2048 -validity 10000
+```
+
+To produce the base64 value on Linux/macOS:
+
+```bash
+base64 -w 0 wideck-release.jks
+```
+
+On Windows PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("wideck-release.jks"))
+```
+
+Store that output as `ANDROID_KEYSTORE_BASE64`, then set the other three secrets. Do not share the keystore publicly.
+
+## Build and release
+
+- Pushing to `main` builds Windows and Android assets and creates the configured next release if it does not already exist.
+- Publishing a GitHub Release also triggers a build and attaches versioned Windows and Android assets to that release.
+- Release tags should use semantic versions such as `v1.0.3` or `v1.1.0`.
+- Android's version code is derived from the numeric version (major × 10,000 + minor × 100 + patch).
+
+## Antivirus and SmartScreen
+
+The Windows build is unsigned. Switching from a single-file executable to a directory-based ZIP may reduce some heuristic detections, but cannot guarantee that all browsers or antivirus products will trust it. Do not blindly bypass warnings. Download only from the official repository and submit suspected false positives to the relevant security vendor. A verifiable Windows code-signing certificate is the durable way to establish publisher identity and reputation.
 
 ## Security
-Designed for a trusted home LAN only. Do not port-forward the host port to the internet. The pairing PIN/token do not encrypt network traffic.
+
+WiDeck is intended for a trusted home LAN. Do not port-forward the host port to the internet. The local HTTP traffic is not encrypted, so use it only on a trusted network.
