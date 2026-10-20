@@ -85,7 +85,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'release'
+    if: github.event_name != 'pull_request'
     needs: [android, windows]
     runs-on: ubuntu-latest
     steps:
