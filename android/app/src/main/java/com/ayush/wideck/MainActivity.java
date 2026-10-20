@@ -1,6 +1,7 @@
 package com.ayush.wideck;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.Intent;
 import android.net.Uri;
@@ -50,6 +51,7 @@ public class MainActivity extends Activity {
     private String host = "", token = "";
     private JSONArray availableApps = new JSONArray();
     private final ArrayList<JSONObject> chosenApps = new ArrayList<>();
+    private JSONArray macros = new JSONArray();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
     private String latestVersion = "", latestApkUrl = "", latestReleaseNotes = "";
@@ -62,6 +64,7 @@ public class MainActivity extends Activity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         prefs = getSharedPreferences("wideck", MODE_PRIVATE);
         host = prefs.getString("host", "");
+        macros = savedMacros();
         showConnect();
         checkForUpdates();
         scheduleBackgroundUpdateChecks();
@@ -94,6 +97,21 @@ public class MainActivity extends Activity {
         b.setBackground(shape);
         b.setElevation(dp(2));
         return b;
+    }
+
+    private JSONArray savedMacros() {
+        try { return new JSONArray(prefs.getString("saved_macros", "[]")); }
+        catch (JSONException ignored) { return new JSONArray(); }
+    }
+
+    private void persistApps() {
+        JSONArray selection = new JSONArray();
+        for (JSONObject item : chosenApps) selection.put(item);
+        prefs.edit().putString("selected_apps", selection.toString()).apply();
+    }
+
+    private void persistMacros() {
+        prefs.edit().putString("saved_macros", macros.toString()).apply();
     }
 
     private JSONArray savedApps() {
@@ -346,7 +364,13 @@ public class MainActivity extends Activity {
                     for (int k = 0; k < availableApps.length(); k++) {
                         JSONObject candidate = availableApps.optJSONObject(k);
                         if (candidate != null && candidate.optString("id").equals(savedId)) {
-                            restored.add(candidate); break;
+                            JSONObject restoredItem = new JSONObject(candidate.toString());
+                            JSONObject savedItem = saved.optJSONObject(j);
+                            if (savedItem != null) {
+                                if (savedItem.has("custom_label")) restoredItem.put("custom_label", savedItem.optString("custom_label"));
+                                if (savedItem.has("tile_color")) restoredItem.put("tile_color", savedItem.optString("tile_color"));
+                            }
+                            restored.add(restoredItem); break;
                         }
                     }
                 }
@@ -418,8 +442,8 @@ public class MainActivity extends Activity {
         save.setOnClickListener(v -> {
             ArrayList<JSONObject> selected = new ArrayList<>();
             for (CheckBox cb : checks) if (cb.isChecked()) {
-                if (selected.size() == 5) {
-                    Toast.makeText(this, "Choose no more than five apps", Toast.LENGTH_SHORT).show();
+                if (selected.size() >= 5 - macros.length()) {
+                    Toast.makeText(this, "The deck has five programmable slots. Remove a macro or app first.", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 selected.add((JSONObject) cb.getTag());
@@ -429,9 +453,7 @@ public class MainActivity extends Activity {
                 return;
             }
             chosenApps.clear(); chosenApps.addAll(selected);
-            JSONArray selection = new JSONArray();
-            for (JSONObject item : selected) selection.put(item);
-            prefs.edit().putString("selected_apps", selection.toString()).apply();
+            persistApps();
             showDeck();
         });
         refresh.setOnClickListener(v -> loadAppsAgain());
@@ -449,16 +471,43 @@ public class MainActivity extends Activity {
         });
     }
 
+    private int tileColor(JSONObject item) {
+        String value = item.optString("tile_color", "default");
+        if ("mint".equals(value)) return Color.rgb(38, 104, 83);
+        if ("blue".equals(value)) return Color.rgb(38, 72, 125);
+        if ("purple".equals(value)) return Color.rgb(91, 59, 128);
+        if ("orange".equals(value)) return Color.rgb(133, 76, 32);
+        return PANEL;
+    }
+
     private void showDeck() {
         currentPage = "deck";
-        LinearLayout root = page("WiDeck", "Connected to " + host + " · Tap a tile to launch");
+        LinearLayout root = page("WiDeck", "Connected to " + host + " · Tap to run · Hold a tile to customize");
         addUpdateBanner(root);
         android.widget.GridLayout grid = new android.widget.GridLayout(this);
         grid.setColumnCount(3); grid.setRowCount(2);
+        int total = chosenApps.size() + macros.length();
         for (int i = 0; i < 6; i++) {
             final int index = i;
-            String label = index < chosenApps.size() ? chosenApps.get(index).optString("name", "App") : (index == 5 ? "Settings" : "＋ Add app");
-            Button b = button(label); b.setTextSize(13);
+            Button b;
+            if (index == 5) {
+                b = button("Settings");
+            } else if (index < chosenApps.size()) {
+                JSONObject item = chosenApps.get(index);
+                b = button(item.optString("custom_label", item.optString("name", "App")));
+                b.setBackground(makeTileBackground(tileColor(item)));
+                b.setOnLongClickListener(v -> { customizeApp(index); return true; });
+            } else if (index < total) {
+                JSONObject macro = macros.optJSONObject(index - chosenApps.size());
+                String macroName = macro == null ? "Macro" : macro.optString("name", "Macro");
+                b = button("⚡ " + macroName);
+                b.setBackground(makeTileBackground(macro == null ? PANEL : tileColor(macro)));
+                final int macroIndex = index - chosenApps.size();
+                b.setOnLongClickListener(v -> { manageMacro(macroIndex); return true; });
+            } else {
+                b = button(index < 5 ? "＋ Add app / macro" : "Settings");
+            }
+            b.setTextSize(13);
             android.widget.GridLayout.LayoutParams gp = new android.widget.GridLayout.LayoutParams();
             gp.width = 0; gp.height = 0;
             gp.columnSpec = android.widget.GridLayout.spec(index % 3, 1f);
@@ -468,11 +517,165 @@ public class MainActivity extends Activity {
             b.setOnClickListener(v -> {
                 if (index == 5) showSettings();
                 else if (index < chosenApps.size()) launchApp(chosenApps.get(index));
-                else showAppPicker();
+                else if (index < total) runMacro(macros.optJSONObject(index - chosenApps.size()));
+                else showAddChoice();
             });
         }
         root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+    }
+
+    private GradientDrawable makeTileBackground(int color) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(color); shape.setCornerRadius(dp(12));
+        return shape;
+    }
+
+    private void showAddChoice() {
+        String[] options = {"Add Windows app", "Create macro button"};
+        new AlertDialog.Builder(this).setTitle("Customize your deck")
+            .setItems(options, (dialog, which) -> {
+                if (which == 0) showAppPicker();
+                else createMacro();
+            }).show();
+    }
+
+    private void customizeApp(int index) {
+        if (index < 0 || index >= chosenApps.size()) return;
+        JSONObject item = chosenApps.get(index);
+        String[] options = {"Rename tile", "Change tile colour", "Move earlier", "Move later", "Remove from deck"};
+        new AlertDialog.Builder(this).setTitle(item.optString("custom_label", item.optString("name", "App")))
+            .setItems(options, (dialog, which) -> {
+                if (which == 0) {
+                    EditText name = new EditText(this);
+                    name.setSingleLine(true);
+                    name.setText(item.optString("custom_label", item.optString("name", "App")));
+                    new AlertDialog.Builder(this).setTitle("Tile label").setView(name)
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Save", (d, w) -> {
+                            String value = name.getText().toString().trim();
+                            try {
+                                if (value.isEmpty() || value.equals(item.optString("name"))) item.remove("custom_label");
+                                else item.put("custom_label", value);
+                                persistApps(); showDeck();
+                            } catch (JSONException ignored) { }
+                        }).show();
+                } else if (which == 1) {
+                    String[] colors = {"Default", "Mint", "Blue", "Purple", "Orange"};
+                    String[] keys = {"default", "mint", "blue", "purple", "orange"};
+                    new AlertDialog.Builder(this).setTitle("Tile colour").setItems(colors, (d, choice) -> {
+                        try { if ("default".equals(keys[choice])) item.remove("tile_color"); else item.put("tile_color", keys[choice]); persistApps(); showDeck(); }
+                        catch (JSONException ignored) { }
+                    }).show();
+                } else if (which == 2 || which == 3) {
+                    int target = which == 2 ? index - 1 : index + 1;
+                    if (target >= 0 && target < chosenApps.size()) {
+                        chosenApps.remove(index); chosenApps.add(target, item); persistApps(); showDeck();
+                    }
+                } else if (which == 4) {
+                    chosenApps.remove(index); persistApps(); showDeck();
+                }
+            }).show();
+    }
+
+    private void createMacro() {
+        if (chosenApps.size() + macros.length() >= 5) {
+            Toast.makeText(this, "Free one deck slot before adding a macro.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(4), dp(20), 0);
+        EditText name = new EditText(this); name.setSingleLine(true); name.setHint("Macro name (e.g. Work setup)");
+        form.addView(name);
+        EditText website = new EditText(this); website.setSingleLine(true); website.setHint("Optional website URL (https://...)");
+        form.addView(website);
+        TextView hint = new TextView(this);
+        hint.setText("Select apps to launch in order. The website opens after the apps.");
+        hint.setTextColor(MUTED); hint.setPadding(0, dp(8), 0, dp(4)); form.addView(hint);
+        ArrayList<CheckBox> checks = new ArrayList<>();
+        for (JSONObject app : chosenApps) {
+            CheckBox check = new CheckBox(this);
+            check.setText(app.optString("custom_label", app.optString("name", "App")));
+            check.setTextColor(TEXT); check.setTag(app); form.addView(check); checks.add(check);
+        }
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this); scroll.addView(form);
+        new AlertDialog.Builder(this).setTitle("Create macro").setView(scroll)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save macro", (dialog, which) -> {
+                String macroName = name.getText().toString().trim();
+                String url = website.getText().toString().trim();
+                JSONArray appIds = new JSONArray();
+                for (CheckBox check : checks) if (check.isChecked()) appIds.put(((JSONObject) check.getTag()).optString("id"));
+                if (macroName.isEmpty()) { Toast.makeText(this, "Enter a macro name.", Toast.LENGTH_SHORT).show(); return; }
+                if (appIds.length() == 0 && url.isEmpty()) { Toast.makeText(this, "Select an app or enter a website.", Toast.LENGTH_SHORT).show(); return; }
+                if (!url.isEmpty() && !(url.startsWith("https://") || url.startsWith("http://"))) {
+                    Toast.makeText(this, "Website must start with http:// or https://.", Toast.LENGTH_LONG).show(); return;
+                }
+                try {
+                    JSONObject macro = new JSONObject();
+                    macro.put("id", Long.toString(System.currentTimeMillis()));
+                    macro.put("name", macroName); macro.put("app_ids", appIds); macro.put("url", url);
+                    JSONArray updated = new JSONArray();
+                    for (int i = 0; i < macros.length(); i++) updated.put(macros.getJSONObject(i));
+                    updated.put(macro); macros = updated; persistMacros(); showDeck();
+                } catch (JSONException ignored) { }
+            }).show();
+    }
+
+    private void manageMacro(int index) {
+        JSONObject macro = macros.optJSONObject(index);
+        if (macro == null) return;
+        String[] options = {"Rename macro", "Change tile colour", "Move earlier", "Move later", "Delete macro"};
+        new AlertDialog.Builder(this).setTitle(macro.optString("name", "Macro")).setItems(options, (dialog, which) -> {
+            if (which == 0) {
+                EditText name = new EditText(this); name.setSingleLine(true); name.setText(macro.optString("name", ""));
+                new AlertDialog.Builder(this).setTitle("Macro name").setView(name).setNegativeButton("Cancel", null)
+                    .setPositiveButton("Save", (d, w) -> { try { String n = name.getText().toString().trim(); if (!n.isEmpty()) macro.put("name", n); persistMacros(); showDeck(); } catch (JSONException ignored) { } }).show();
+            } else if (which == 1) {
+                String[] colors = {"Default", "Mint", "Blue", "Purple", "Orange"};
+                String[] keys = {"default", "mint", "blue", "purple", "orange"};
+                new AlertDialog.Builder(this).setTitle("Tile colour").setItems(colors, (d, c) -> {
+                    try { if ("default".equals(keys[c])) macro.remove("tile_color"); else macro.put("tile_color", keys[c]); persistMacros(); showDeck(); }
+                    catch (JSONException ignored) { }
+                }).show();
+            } else if (which == 2 || which == 3) {
+                int target = which == 2 ? index - 1 : index + 1;
+                if (target >= 0 && target < macros.length()) {
+                    ArrayList<JSONObject> ordered = new ArrayList<>();
+                    for (int i = 0; i < macros.length(); i++) ordered.add(macros.optJSONObject(i));
+                    ordered.remove(index);
+                    ordered.add(target, macro);
+                    JSONArray updated = new JSONArray();
+                    for (JSONObject entry : ordered) updated.put(entry);
+                    macros = updated; persistMacros(); showDeck();
+                }
+            } else if (which == 4) {
+                JSONArray updated = new JSONArray();
+                for (int i = 0; i < macros.length(); i++) if (i != index) updated.put(macros.optJSONObject(i));
+                macros = updated; persistMacros(); showDeck();
+            }
+        }).show();
+    }
+
+    private void runMacro(JSONObject macro) {
+        if (macro == null) return;
+        worker.execute(() -> {
+            try {
+                JSONArray steps = new JSONArray();
+                JSONArray ids = macro.optJSONArray("app_ids");
+                if (ids != null) for (int i = 0; i < ids.length(); i++) {
+                    JSONObject step = new JSONObject(); step.put("type", "launch"); step.put("app_id", ids.optString(i)); steps.put(step);
+                }
+                String url = macro.optString("url", "").trim();
+                if (!url.isEmpty()) { JSONObject step = new JSONObject(); step.put("type", "url"); step.put("url", url); steps.put(step); }
+                JSONObject body = new JSONObject(); body.put("steps", steps);
+                request("POST", "/macro", body, true);
+                runOnUiThread(() -> Toast.makeText(this, "Running " + macro.optString("name", "macro"), Toast.LENGTH_SHORT).show());
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Macro failed. Reconnect and try again.", Toast.LENGTH_LONG).show());
+            }
+        });
     }
 
     private void launchApp(JSONObject selected) {
@@ -504,6 +707,10 @@ public class MainActivity extends Activity {
         up.setOnClickListener(v -> sendAction("volume_up"));
         down.setOnClickListener(v -> sendAction("volume_down"));
         mute.setOnClickListener(v -> sendAction("mute"));
+        Button addMacro = button("Create macro button");
+        LinearLayout.LayoutParams amp = new LinearLayout.LayoutParams(-1, dp(46));
+        amp.topMargin = dp(10); root.addView(addMacro, amp);
+        addMacro.setOnClickListener(v -> createMacro());
         Button choose = button("Change deck apps");
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(46));
         p.topMargin = dp(10); root.addView(choose, p);
