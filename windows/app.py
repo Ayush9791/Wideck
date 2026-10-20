@@ -171,6 +171,56 @@ def action():
     return jsonify({"ok": True})
 
 
+
+
+@app.post("/macro")
+def run_macro():
+    if not paired():
+        return jsonify({"error": "Not paired"}), 401
+    data = request.get_json(silent=True) or {}
+    steps = data.get("steps")
+    if not isinstance(steps, list) or not steps or len(steps) > 12:
+        return jsonify({"error": "A macro must contain between 1 and 12 steps"}), 400
+    # Validate the complete macro before executing any step.
+    validated = []
+    for step in steps:
+        if not isinstance(step, dict):
+            return jsonify({"error": "Invalid macro step"}), 400
+        kind = step.get("type")
+        if kind == "launch":
+            app_id = str(step.get("app_id", ""))
+            entry = APP_SHORTCUTS.get(app_id)
+            if not entry:
+                discover_apps()
+                entry = APP_SHORTCUTS.get(app_id)
+            if not entry:
+                return jsonify({"error": "Macro references an unknown app"}), 400
+            validated.append(("launch", entry))
+        elif kind == "url":
+            target = str(step.get("url", "")).strip()
+            from urllib.parse import urlparse
+            parsed = urlparse(target)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                return jsonify({"error": "Only valid HTTP/HTTPS URLs are allowed"}), 400
+            validated.append(("url", target))
+        else:
+            return jsonify({"error": "Unsupported macro step"}), 400
+    try:
+        import webbrowser
+        for kind, value in validated:
+            if kind == "launch":
+                if value["kind"] == "startapp":
+                    subprocess.Popen(["explorer.exe", "shell:AppsFolder\\" + value["target"]])
+                else:
+                    os.startfile(value["target"])
+            else:
+                webbrowser.open(value)
+    except (OSError, subprocess.SubprocessError, KeyError):
+        app.logger.exception("Macro execution failed")
+        return jsonify({"error": "Macro execution failed"}), 500
+    return jsonify({"ok": True, "steps": len(validated)})
+
+
 def local_ip():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
