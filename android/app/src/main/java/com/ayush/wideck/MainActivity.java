@@ -8,6 +8,11 @@ import android.os.Build;
 import android.provider.Settings;
 import android.graphics.drawable.GradientDrawable;
 import androidx.core.content.FileProvider;
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
 import java.io.File;
 import java.io.FileOutputStream;
 import android.content.pm.ActivityInfo;
@@ -34,6 +39,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -58,6 +64,7 @@ public class MainActivity extends Activity {
         host = prefs.getString("host", "");
         showConnect();
         checkForUpdates();
+        scheduleBackgroundUpdateChecks();
     }
 
     private LinearLayout page(String title, String subtitle) {
@@ -153,6 +160,18 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(12);
         root.addView(card, 1, params);
+    }
+
+    private void scheduleBackgroundUpdateChecks() {
+        Constraints constraints = new Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build();
+        PeriodicWorkRequest request = new PeriodicWorkRequest.Builder(
+            UpdateCheckWorker.class, 12, TimeUnit.HOURS
+        ).setConstraints(constraints).build();
+        WorkManager.getInstance(getApplicationContext()).enqueueUniquePeriodicWork(
+            "wideck-update-check", ExistingPeriodicWorkPolicy.KEEP, request
+        );
     }
 
     private void checkForUpdates() {
