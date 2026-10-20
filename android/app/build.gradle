@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId 'com.ayush.wideck'
         minSdk 26
-        targetSdk 28
+        targetSdk 35
         versionCode computedVersionCode
         versionName releaseVersion
     }
