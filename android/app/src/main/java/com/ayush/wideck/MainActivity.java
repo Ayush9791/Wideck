@@ -642,14 +642,12 @@ public class MainActivity extends Activity {
             } else if (which == 2 || which == 3) {
                 int target = which == 2 ? index - 1 : index + 1;
                 if (target >= 0 && target < macros.length()) {
+                    ArrayList<JSONObject> ordered = new ArrayList<>();
+                    for (int i = 0; i < macros.length(); i++) ordered.add(macros.optJSONObject(i));
+                    ordered.remove(index);
+                    ordered.add(target, macro);
                     JSONArray updated = new JSONArray();
-                    for (int i = 0; i < macros.length(); i++) {
-                        if (i == index) continue;
-                        if (i == target && which == 3) updated.put(macros.optJSONObject(i));
-                        if (i == target && which == 2) updated.put(macro);
-                        updated.put(macros.optJSONObject(i));
-                    }
-                    if (target == macros.length() - 1 && which == 3) updated.put(macro);
+                    for (JSONObject entry : ordered) updated.put(entry);
                     macros = updated; persistMacros(); showDeck();
                 }
             } else if (which == 4) {
