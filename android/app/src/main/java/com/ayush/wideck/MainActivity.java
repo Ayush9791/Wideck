@@ -125,34 +125,178 @@ public class MainActivity extends Activity {
     private void showConnect() {
         currentPage = "connect";
         LinearLayout root = page("WiDeck", "Your phone, your laptop, one connected control deck.");
+        root.setPadding(dp(24), dp(16), dp(24), dp(14));
+
+        // Compact version/status row keeps release information visible without
+        // pushing the pairing form below the fold in landscape orientation.
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView hint = new TextView(this);
+        hint.setText("PAIR YOUR WINDOWS DEVICE");
+        hint.setTextColor(ACCENT);
+        hint.setTextSize(10);
+        hint.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        hint.setLetterSpacing(0.08f);
+        topRow.addView(hint, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView version = new TextView(this);
+        version.setText("WiDeck " + BuildConfig.VERSION_NAME + "  •  READY TO CONNECT");
+        version.setTextColor(MUTED);
+        version.setTextSize(10);
+        version.setGravity(Gravity.CENTER_VERTICAL);
+        topRow.addView(version);
+        LinearLayout.LayoutParams topParams = new LinearLayout.LayoutParams(-1, -2);
+        topParams.topMargin = dp(4);
+        topParams.bottomMargin = dp(12);
+        root.addView(topRow, topParams);
+
         addUpdateBanner(root);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.rgb(22, 29, 40));
+        cardBg.setCornerRadius(dp(18));
+        cardBg.setStroke(dp(1), Color.rgb(43, 56, 74));
+        card.setBackground(cardBg);
+
         LinearLayout fields = new LinearLayout(this);
         fields.setOrientation(LinearLayout.HORIZONTAL);
+        fields.setGravity(Gravity.CENTER_VERTICAL);
+
+        LinearLayout hostColumn = new LinearLayout(this);
+        hostColumn.setOrientation(LinearLayout.VERTICAL);
+        TextView hostLabel = new TextView(this);
+        hostLabel.setText("LAPTOP IP ADDRESS");
+        hostLabel.setTextColor(TEXT);
+        hostLabel.setTextSize(12);
+        hostLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        hostColumn.addView(hostLabel);
+        TextView hostHelp = new TextView(this);
+        hostHelp.setText("Enter the IP shown in WiDeck on Windows");
+        hostHelp.setTextColor(MUTED);
+        hostHelp.setTextSize(10);
+        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(-1, -2);
+        helpParams.topMargin = dp(3);
+        helpParams.bottomMargin = dp(7);
+        hostColumn.addView(hostHelp, helpParams);
+
         hostInput = new EditText(this);
         hostInput.setSingleLine(true);
-        hostInput.setHint("Laptop IP (e.g. 192.168.1.8)");
-        hostInput.setText(host); hostInput.setTextColor(TEXT); hostInput.setHintTextColor(MUTED);
+        hostInput.setHint("e.g. 192.168.1.8");
+        hostInput.setText(host);
+        hostInput.setTextColor(TEXT);
+        hostInput.setHintTextColor(Color.rgb(111, 126, 147));
         hostInput.setTextSize(14);
-        hostInput.setBackgroundTintList(android.content.res.ColorStateList.valueOf(MUTED));
-        fields.addView(hostInput, new LinearLayout.LayoutParams(0, dp(48), 1));
+        hostInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        hostInput.setPadding(dp(12), 0, dp(12), 0);
+        hostInput.setBackground(fieldBackground(Color.rgb(39, 52, 70)));
+        hostColumn.addView(hostInput, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        LinearLayout pinColumn = new LinearLayout(this);
+        pinColumn.setOrientation(LinearLayout.VERTICAL);
+        TextView pinLabel = new TextView(this);
+        pinLabel.setText("PAIRING PIN");
+        pinLabel.setTextColor(TEXT);
+        pinLabel.setTextSize(12);
+        pinLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        pinColumn.addView(pinLabel);
+        TextView pinHelp = new TextView(this);
+        pinHelp.setText("The 6-digit code shown on Windows");
+        pinHelp.setTextColor(MUTED);
+        pinHelp.setTextSize(10);
+        pinColumn.addView(pinHelp, helpParamsForPin());
         pinInput = new EditText(this);
-        pinInput.setSingleLine(true); pinInput.setHint("Pairing PIN"); pinInput.setInputType(2);
-        pinInput.setTextColor(TEXT); pinInput.setHintTextColor(MUTED);
-        pinInput.setBackgroundTintList(android.content.res.ColorStateList.valueOf(MUTED));
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(dp(130), dp(48));
-        pp.leftMargin = dp(10);
-        fields.addView(pinInput, pp);
-        root.addView(fields);
+        pinInput.setSingleLine(true);
+        pinInput.setHint("000000");
+        pinInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        pinInput.setTextColor(TEXT);
+        pinInput.setHintTextColor(Color.rgb(111, 126, 147));
+        pinInput.setTextSize(14);
+        pinInput.setLetterSpacing(0.12f);
+        pinInput.setPadding(dp(12), 0, dp(12), 0);
+        pinInput.setBackground(fieldBackground(Color.rgb(39, 52, 70)));
+        pinColumn.addView(pinInput, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        fields.addView(hostColumn, new LinearLayout.LayoutParams(0, -2, 1.35f));
+        View separator = new View(this);
+        separator.setBackgroundColor(Color.rgb(48, 62, 82));
+        LinearLayout.LayoutParams separatorParams = new LinearLayout.LayoutParams(dp(1), dp(92));
+        separatorParams.leftMargin = dp(16);
+        separatorParams.rightMargin = dp(16);
+        fields.addView(separator, separatorParams);
+        fields.addView(pinColumn, new LinearLayout.LayoutParams(0, -2, 0.85f));
+        card.addView(fields);
+
         Button connect = button("Connect and pair");
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, dp(48));
-        cp.topMargin = dp(10);
-        root.addView(connect, cp);
+        connect.setTextSize(15);
+        connect.setCompoundDrawablePadding(dp(8));
+        GradientDrawable connectBg = new GradientDrawable();
+        connectBg.setColor(ACCENT);
+        connectBg.setCornerRadius(dp(12));
+        connect.setBackground(connectBg);
+        connect.setTextColor(Color.rgb(16, 20, 27));
+        connect.setElevation(0);
+        LinearLayout.LayoutParams connectParams = new LinearLayout.LayoutParams(-1, dp(52));
+        connectParams.topMargin = dp(14);
+        card.addView(connect, connectParams);
         connect.setOnClickListener(v -> pair());
+
+        LinearLayout guidance = new LinearLayout(this);
+        guidance.setOrientation(LinearLayout.HORIZONTAL);
+        guidance.setGravity(Gravity.CENTER_VERTICAL);
+        guidance.setPadding(dp(11), dp(9), dp(11), dp(9));
+        GradientDrawable guidanceBg = new GradientDrawable();
+        guidanceBg.setColor(Color.rgb(18, 25, 36));
+        guidanceBg.setCornerRadius(dp(10));
+        guidanceBg.setStroke(dp(1), Color.rgb(39, 52, 70));
+        guidance.setBackground(guidanceBg);
+        TextView info = new TextView(this);
+        info.setText("i");
+        info.setTextColor(ACCENT);
+        info.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        info.setTextSize(15);
+        info.setGravity(Gravity.CENTER);
+        guidance.addView(info, new LinearLayout.LayoutParams(dp(24), -2));
+        TextView guideText = new TextView(this);
+        guideText.setText("Both devices must be on the same Wi-Fi network. Keep WiDeck running on Windows.");
+        guideText.setTextColor(MUTED);
+        guideText.setTextSize(11);
+        LinearLayout.LayoutParams guideParams = new LinearLayout.LayoutParams(0, -2, 1);
+        guideParams.leftMargin = dp(6);
+        guidance.addView(guideText, guideParams);
+        LinearLayout.LayoutParams guidanceParams = new LinearLayout.LayoutParams(-1, -2);
+        guidanceParams.topMargin = dp(10);
+        card.addView(guidance, guidanceParams);
+
+        root.addView(card, new LinearLayout.LayoutParams(-1, -2));
+
         status = new TextView(this);
-        status.setText("Start WiDeck on Windows and enter the IP and PIN shown there.");
-        status.setTextColor(MUTED); status.setTextSize(12); status.setPadding(0, dp(8), 0, 0);
-        root.addView(status);
+        status.setText("Ready when you are. Your saved deck and macros stay on this phone.");
+        status.setTextColor(MUTED);
+        status.setTextSize(11);
+        status.setGravity(Gravity.CENTER_VERTICAL);
+        status.setPadding(dp(2), dp(8), dp(2), 0);
+        root.addView(status, new LinearLayout.LayoutParams(-1, -2));
+
         setContentView(root);
+    }
+
+    private GradientDrawable fieldBackground(int color) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(color);
+        shape.setCornerRadius(dp(11));
+        shape.setStroke(dp(1), Color.rgb(58, 75, 98));
+        return shape;
+    }
+
+    private LinearLayout.LayoutParams helpParamsForPin() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(3);
+        params.bottomMargin = dp(7);
+        return params;
     }
 
     private void addUpdateBanner(LinearLayout root) {
