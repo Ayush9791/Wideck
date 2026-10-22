@@ -211,8 +211,7 @@ public class MainActivity extends Activity {
         pinInput = new EditText(this);
         pinInput.setSingleLine(true);
         pinInput.setHint("000000");
-        pinInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
-                | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        pinInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         pinInput.setTextColor(TEXT);
         pinInput.setHintTextColor(Color.rgb(111, 126, 147));
         pinInput.setTextSize(14);
@@ -234,13 +233,12 @@ public class MainActivity extends Activity {
         Button connect = button("Connect and pair");
         connect.setTextSize(15);
         connect.setCompoundDrawablePadding(dp(8));
-        GradientDrawable connectBg = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{Color.rgb(30, 126, 246), Color.rgb(105, 77, 246)});
-        connectBg.setCornerRadius(dp(14));
+        GradientDrawable connectBg = new GradientDrawable();
+        connectBg.setColor(ACCENT);
+        connectBg.setCornerRadius(dp(12));
         connect.setBackground(connectBg);
-        connect.setTextColor(Color.WHITE);
-        connect.setElevation(dp(1));
+        connect.setTextColor(Color.rgb(16, 20, 27));
+        connect.setElevation(0);
         LinearLayout.LayoutParams connectParams = new LinearLayout.LayoutParams(-1, dp(52));
         connectParams.topMargin = dp(14);
         card.addView(connect, connectParams);
