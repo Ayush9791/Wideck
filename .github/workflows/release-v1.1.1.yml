@@ -1,4 +1,4 @@
-name: Build and publish WiDeck v1.1.1
+name: Build and publish WiDeck v1.2.0
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  WIDECK_VERSION: v1.1.1
+  WIDECK_VERSION: v1.2.0
 
 jobs:
   android:
