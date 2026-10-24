@@ -160,11 +160,13 @@ public class MainActivity extends Activity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         prefs = getSharedPreferences("wideck", MODE_PRIVATE);
         host = prefs.getString("host", "");
+        token = prefs.getString("session_token", "");
         applyTheme();
         macros = savedMacros();
         showConnect();
         checkForUpdates();
         scheduleBackgroundUpdateChecks();
+        if (!host.isEmpty() && !token.isEmpty()) restoreSavedSession();
     }
 
     private LinearLayout page(String title, String subtitle) {
@@ -596,7 +598,7 @@ public class MainActivity extends Activity {
                 JSONObject b = new JSONObject(); b.put("pin", pin);
                 JSONObject r = request("POST", "/pair", b, false);
                 token = r.getString("token");
-                prefs.edit().putString("host", host).apply();
+                prefs.edit().putString("host", host).putString("session_token", token).apply();
                 availableApps = request("GET", "/apps", null, true).getJSONArray("apps");
                 JSONArray saved = savedApps();
                 ArrayList<JSONObject> restored = new ArrayList<>();
@@ -943,44 +945,95 @@ public class MainActivity extends Activity {
     private void showSettings() {
         currentPage = "settings";
         LinearLayout root = page("Settings", "Manage your deck and connection.");
-        addUpdateBanner(root);
+        root.setPadding(dp(18), dp(12), dp(18), dp(10));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        addUpdateBanner(content);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         Button up = button("Volume +"), down = button("Volume −"), mute = button("Mute");
-        row.addView(up, new LinearLayout.LayoutParams(0, dp(52), 1));
-        LinearLayout.LayoutParams d = new LinearLayout.LayoutParams(0, dp(52), 1);
+        row.addView(up, new LinearLayout.LayoutParams(0, dp(48), 1));
+        LinearLayout.LayoutParams d = new LinearLayout.LayoutParams(0, dp(48), 1);
         d.leftMargin = dp(6); row.addView(down, d);
-        LinearLayout.LayoutParams m = new LinearLayout.LayoutParams(0, dp(52), 1);
+        LinearLayout.LayoutParams m = new LinearLayout.LayoutParams(0, dp(48), 1);
         m.leftMargin = dp(6); row.addView(mute, m);
-        root.addView(row);
+        content.addView(row);
         up.setOnClickListener(v -> sendAction("volume_up"));
         down.setOnClickListener(v -> sendAction("volume_down"));
         mute.setOnClickListener(v -> sendAction("mute"));
         Button workspaces = button("Workspace profiles · Coding / College / Gaming / Meetings");
-        LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1, dp(46));
-        wp.topMargin = dp(10); root.addView(workspaces, wp);
+        LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1, dp(44));
+        wp.topMargin = dp(8); content.addView(workspaces, wp);
         workspaces.setOnClickListener(v -> showWorkspaces());
         Button appearance = button("Appearance · Theme, accent and tile density");
-        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(46));
-        ap.topMargin = dp(8); root.addView(appearance, ap);
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(44));
+        ap.topMargin = dp(7); content.addView(appearance, ap);
         appearance.setOnClickListener(v -> showAppearance());
         Button addMacro = button("Create macro button");
-        LinearLayout.LayoutParams amp = new LinearLayout.LayoutParams(-1, dp(46));
-        amp.topMargin = dp(10); root.addView(addMacro, amp);
+        LinearLayout.LayoutParams amp = new LinearLayout.LayoutParams(-1, dp(44));
+        amp.topMargin = dp(7); content.addView(addMacro, amp);
         addMacro.setOnClickListener(v -> createMacro());
         Button choose = button("Change deck apps");
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(46));
-        p.topMargin = dp(10); root.addView(choose, p);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, dp(44));
+        p.topMargin = dp(7); content.addView(choose, p);
         choose.setOnClickListener(v -> showAppPicker());
         Button reconnect = button("Disconnect / reconnect");
-        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(-1, dp(46));
-        p2.topMargin = dp(8); root.addView(reconnect, p2);
-        reconnect.setOnClickListener(v -> { token = ""; showConnect(); });
+        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(-1, dp(44));
+        p2.topMargin = dp(7); content.addView(reconnect, p2);
+        reconnect.setOnClickListener(v -> { token = ""; prefs.edit().remove("session_token").apply(); showConnect(); });
+        scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         Button back = button("Back to deck");
-        LinearLayout.LayoutParams p3 = new LinearLayout.LayoutParams(-1, dp(46));
-        p3.topMargin = dp(8); root.addView(back, p3);
+        back.setTextSize(15);
+        back.setBackground(makeTileBackground(ACCENT));
+        back.setTextColor(Color.rgb(16, 20, 27));
+        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(-1, dp(48));
+        backParams.topMargin = dp(8);
+        root.addView(back, backParams);
         back.setOnClickListener(v -> showDeck());
         setContentView(root);
+    }
+
+    private void restoreSavedSession() {
+        worker.execute(() -> {
+            try {
+                availableApps = request("GET", "/apps", null, true).getJSONArray("apps");
+                JSONArray saved = savedApps();
+                ArrayList<JSONObject> restored = new ArrayList<>();
+                for (int i = 0; i < saved.length(); i++) {
+                    JSONObject savedItem = saved.optJSONObject(i);
+                    if (savedItem == null) continue;
+                    String id = savedItem.optString("id", "");
+                    for (int j = 0; j < availableApps.length(); j++) {
+                        JSONObject candidate = availableApps.optJSONObject(j);
+                        if (candidate != null && candidate.optString("id").equals(id)) {
+                            JSONObject item = new JSONObject(candidate.toString());
+                            if (savedItem.has("custom_label")) item.put("custom_label", savedItem.optString("custom_label"));
+                            if (savedItem.has("tile_icon")) item.put("tile_icon", savedItem.optString("tile_icon"));
+                            if (savedItem.has("tile_color")) item.put("tile_color", savedItem.optString("tile_color"));
+                            restored.add(item);
+                            break;
+                        }
+                    }
+                }
+                runOnUiThread(() -> {
+                    chosenApps.clear();
+                    chosenApps.addAll(restored);
+                    macros = savedMacros();
+                    showDeck();
+                });
+            } catch (Exception e) {
+                token = "";
+                prefs.edit().remove("session_token").apply();
+                runOnUiThread(() -> {
+                    if (!isFinishing()) {
+                        showConnect();
+                        if (status != null) status.setText("Saved session expired. Pair with Windows again.");
+                    }
+                });
+            }
+        });
     }
 
     private void sendAction(String action) {
