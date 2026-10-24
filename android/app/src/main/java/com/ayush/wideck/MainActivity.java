@@ -45,7 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final int BG = Color.rgb(16,20,27), PANEL = Color.rgb(35,45,58), TEXT = Color.rgb(243,245,248), MUTED = Color.rgb(155,167,183), ACCENT = Color.rgb(113,224,181);
+    private int BG = Color.rgb(16,20,27), PANEL = Color.rgb(35,45,58), TEXT = Color.rgb(243,245,248), MUTED = Color.rgb(155,167,183), ACCENT = Color.rgb(113,224,181);
     private EditText hostInput, pinInput;
     private TextView status;
     private String host = "", token = "";
@@ -59,11 +59,108 @@ public class MainActivity extends Activity {
 
     private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
 
+    private void applyTheme() {
+        String theme = prefs == null ? "dark" : prefs.getString("theme", "dark");
+        if ("light".equals(theme)) {
+            BG = Color.rgb(244, 246, 249); PANEL = Color.rgb(226, 231, 238);
+            TEXT = Color.rgb(27, 35, 46); MUTED = Color.rgb(89, 101, 117);
+        } else {
+            BG = Color.rgb(16, 20, 27); PANEL = Color.rgb(35, 45, 58);
+            TEXT = Color.rgb(243, 245, 248); MUTED = Color.rgb(155, 167, 183);
+        }
+        String accent = prefs == null ? "mint" : prefs.getString("accent", "mint");
+        if ("blue".equals(accent)) ACCENT = Color.rgb(93, 166, 255);
+        else if ("amber".equals(accent)) ACCENT = Color.rgb(245, 183, 82);
+        else if ("rose".equals(accent)) ACCENT = Color.rgb(244, 126, 157);
+        else ACCENT = Color.rgb(113, 224, 181);
+    }
+
+    private String[] workspaceNames() { return new String[]{"Coding", "College", "Gaming", "Meetings"}; }
+
+    private JSONObject workspaceStore() {
+        try { return new JSONObject(prefs.getString("workspace_profiles", "{}")); }
+        catch (JSONException ignored) { return new JSONObject(); }
+    }
+
+    private void saveWorkspace(String name) {
+        try {
+            JSONObject snapshot = new JSONObject();
+            JSONArray apps = new JSONArray();
+            for (JSONObject item : chosenApps) apps.put(new JSONObject(item.toString()));
+            snapshot.put("apps", apps);
+            snapshot.put("macros", new JSONArray(macros.toString()));
+            JSONObject store = workspaceStore(); store.put(name, snapshot);
+            prefs.edit().putString("workspace_profiles", store.toString()).putString("active_workspace", name).apply();
+            Toast.makeText(this, name + " workspace saved", Toast.LENGTH_SHORT).show();
+        } catch (JSONException e) { Toast.makeText(this, "Could not save workspace", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void loadWorkspace(String name) {
+        JSONObject snapshot = workspaceStore().optJSONObject(name);
+        if (snapshot == null) {
+            new AlertDialog.Builder(this).setTitle(name + " workspace")
+                .setMessage("This workspace has not been saved yet. Save your current deck to this workspace?")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save current deck", (d, w) -> { saveWorkspace(name); showDeck(); }).show();
+            return;
+        }
+        JSONArray appArray = snapshot.optJSONArray("apps");
+        ArrayList<JSONObject> restoredApps = new ArrayList<>();
+        if (appArray != null) for (int i = 0; i < appArray.length(); i++) {
+            JSONObject item = appArray.optJSONObject(i); if (item != null) restoredApps.add(item);
+        }
+        chosenApps.clear(); chosenApps.addAll(restoredApps);
+        macros = snapshot.optJSONArray("macros") == null ? new JSONArray() : snapshot.optJSONArray("macros");
+        persistApps(); persistMacros();
+        prefs.edit().putString("active_workspace", name).apply();
+        showDeck();
+        Toast.makeText(this, "Loaded " + name + " workspace", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showWorkspaces() {
+        String[] names = workspaceNames();
+        JSONObject store = workspaceStore();
+        String[] labels = new String[names.length];
+        for (int i = 0; i < names.length; i++) labels[i] = names[i] + (store.has(names[i]) ? "  •  Saved" : "  •  Not configured");
+        new AlertDialog.Builder(this).setTitle("Workspace profiles").setItems(labels, (dialog, which) -> {
+            String selected = names[which];
+            new AlertDialog.Builder(this).setTitle(selected + " workspace")
+                .setItems(new String[]{"Load workspace", "Save current deck to workspace"}, (d, action) -> {
+                    if (action == 0) loadWorkspace(selected);
+                    else { saveWorkspace(selected); showDeck(); }
+                }).show();
+        }).setNegativeButton("Cancel", null).show();
+    }
+
+    private void showAppearance() {
+        String[] themes = {"Dark", "Light"};
+        String[] themeKeys = {"dark", "light"};
+        String[] accents = {"Mint", "Blue", "Amber", "Rose"};
+        String[] accentKeys = {"mint", "blue", "amber", "rose"};
+        new AlertDialog.Builder(this).setTitle("Theme")
+            .setSingleChoiceItems(themes, Math.max(0, java.util.Arrays.asList(themeKeys).indexOf(prefs.getString("theme", "dark"))), (dialog, which) -> {
+                prefs.edit().putString("theme", themeKeys[which]).apply();
+                dialog.dismiss(); applyTheme(); showSettings();
+            }).setNegativeButton("Cancel", null).show();
+        new AlertDialog.Builder(this).setTitle("Accent colour")
+            .setSingleChoiceItems(accents, Math.max(0, java.util.Arrays.asList(accentKeys).indexOf(prefs.getString("accent", "mint"))), (dialog, which) -> {
+                prefs.edit().putString("accent", accentKeys[which]).apply();
+                dialog.dismiss(); applyTheme(); showSettings();
+            }).setNegativeButton("Done", null).show();
+        String[] density = {"Comfortable tiles", "Compact tiles"};
+        new AlertDialog.Builder(this).setTitle("Tile density")
+            .setSingleChoiceItems(density, prefs.getBoolean("compact_tiles", false) ? 1 : 0, (dialog, which) -> {
+                prefs.edit().putBoolean("compact_tiles", which == 1).apply();
+                dialog.dismiss(); showDeck();
+            }).setNegativeButton("Cancel", null).show();
+    }
+
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         prefs = getSharedPreferences("wideck", MODE_PRIVATE);
         host = prefs.getString("host", "");
+        applyTheme();
         macros = savedMacros();
         showConnect();
         checkForUpdates();
@@ -638,7 +735,7 @@ public class MainActivity extends Activity {
                 b = button("Settings");
             } else if (index < chosenApps.size()) {
                 JSONObject item = chosenApps.get(index);
-                b = button(item.optString("custom_label", item.optString("name", "App")));
+                b = button(item.optString("tile_icon", "") + (item.optString("tile_icon", "").isEmpty() ? "" : "  ") + item.optString("custom_label", item.optString("name", "App")));
                 b.setBackground(makeTileBackground(tileColor(item)));
                 b.setOnLongClickListener(v -> { customizeApp(index); return true; });
             } else if (index < total) {
@@ -656,7 +753,8 @@ public class MainActivity extends Activity {
             gp.width = 0; gp.height = 0;
             gp.columnSpec = android.widget.GridLayout.spec(index % 3, 1f);
             gp.rowSpec = android.widget.GridLayout.spec(index / 3, 1f);
-            gp.setMargins(dp(5), dp(5), dp(5), dp(5));
+            int tileGap = prefs.getBoolean("compact_tiles", false) ? 2 : 5;
+            gp.setMargins(dp(tileGap), dp(tileGap), dp(tileGap), dp(tileGap));
             grid.addView(b, gp);
             b.setOnClickListener(v -> {
                 if (index == 5) showSettings();
@@ -687,7 +785,7 @@ public class MainActivity extends Activity {
     private void customizeApp(int index) {
         if (index < 0 || index >= chosenApps.size()) return;
         JSONObject item = chosenApps.get(index);
-        String[] options = {"Rename tile", "Change tile colour", "Move earlier", "Move later", "Remove from deck"};
+        String[] options = {"Rename tile", "Choose tile icon", "Change tile colour", "Move earlier", "Move later", "Remove from deck"};
         new AlertDialog.Builder(this).setTitle(item.optString("custom_label", item.optString("name", "App")))
             .setItems(options, (dialog, which) -> {
                 if (which == 0) {
@@ -705,18 +803,25 @@ public class MainActivity extends Activity {
                             } catch (JSONException ignored) { }
                         }).show();
                 } else if (which == 1) {
+                    String[] icons = {"No icon", "Code", "Book", "Game", "Meeting", "Music", "Browser", "Work"};
+                    String[] values = {"", "⌘", "▤", "▶", "◉", "♫", "◎", "▣"};
+                    new AlertDialog.Builder(this).setTitle("Tile icon").setItems(icons, (d, choice) -> {
+                        try { if (values[choice].isEmpty()) item.remove("tile_icon"); else item.put("tile_icon", values[choice]); persistApps(); showDeck(); }
+                        catch (JSONException ignored) { }
+                    }).show();
+                } else if (which == 2) {
                     String[] colors = {"Default", "Mint", "Blue", "Purple", "Orange"};
                     String[] keys = {"default", "mint", "blue", "purple", "orange"};
                     new AlertDialog.Builder(this).setTitle("Tile colour").setItems(colors, (d, choice) -> {
                         try { if ("default".equals(keys[choice])) item.remove("tile_color"); else item.put("tile_color", keys[choice]); persistApps(); showDeck(); }
                         catch (JSONException ignored) { }
                     }).show();
-                } else if (which == 2 || which == 3) {
-                    int target = which == 2 ? index - 1 : index + 1;
+                } else if (which == 3 || which == 4) {
+                    int target = which == 3 ? index - 1 : index + 1;
                     if (target >= 0 && target < chosenApps.size()) {
                         chosenApps.remove(index); chosenApps.add(target, item); persistApps(); showDeck();
                     }
-                } else if (which == 4) {
+                } else if (which == 5) {
                     chosenApps.remove(index); persistApps(); showDeck();
                 }
             }).show();
@@ -851,6 +956,14 @@ public class MainActivity extends Activity {
         up.setOnClickListener(v -> sendAction("volume_up"));
         down.setOnClickListener(v -> sendAction("volume_down"));
         mute.setOnClickListener(v -> sendAction("mute"));
+        Button workspaces = button("Workspace profiles · Coding / College / Gaming / Meetings");
+        LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1, dp(46));
+        wp.topMargin = dp(10); root.addView(workspaces, wp);
+        workspaces.setOnClickListener(v -> showWorkspaces());
+        Button appearance = button("Appearance · Theme, accent and tile density");
+        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(46));
+        ap.topMargin = dp(8); root.addView(appearance, ap);
+        appearance.setOnClickListener(v -> showAppearance());
         Button addMacro = button("Create macro button");
         LinearLayout.LayoutParams amp = new LinearLayout.LayoutParams(-1, dp(46));
         amp.topMargin = dp(10); root.addView(addMacro, amp);
