@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  WIDECK_VERSION: ${{ github.event.release.tag_name || 'v1.1.0' }}
+  WIDECK_VERSION: ${{ github.event.release.tag_name || 'v1.2.1' }}
 
 jobs:
   android:
